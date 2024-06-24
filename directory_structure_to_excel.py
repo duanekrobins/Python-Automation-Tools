@@ -15,8 +15,10 @@ This script performs the following tasks:
 import os
 from datetime import datetime
 from openpyxl import Workbook, styles
+from openpyxl.styles import Font
 from concurrent.futures import ThreadPoolExecutor
 from os import scandir, stat
+from tqdm import tqdm
 
 # Fiscal year cutoff for 2013 starts in July
 fy_cutoff = datetime(2012, 7, 1)
@@ -29,6 +31,20 @@ def scan_files(directory):
                 yield from scan_files(entry.path)
             elif entry.is_file(follow_symlinks=False):
                 yield entry
+
+def count_directories_and_files(directory):
+    """Count total directories and files."""
+    total_directories = 0
+    total_files = 0
+    for entry in scandir(directory):
+        if entry.is_dir(follow_symlinks=False):
+            total_directories += 1
+            subdir_files, subdir_dirs = count_directories_and_files(entry.path)
+            total_files += subdir_files
+            total_directories += subdir_dirs
+        elif entry.is_file(follow_symlinks=False):
+            total_files += 1
+    return total_files, total_directories
 
 def analyze_directory(directory):
     """Analyze file modification dates in the directory."""
@@ -65,10 +81,23 @@ def main():
     # Prompt for output file location and name
     output_file = input("Enter the full path and file name for the output Excel file: ")
 
+    # Validate the output file path
+    if not output_file.endswith('.xlsx'):
+        output_file = os.path.join(output_file, 'DirectoryAnalysis.xlsx')
+
+    # Count total directories and files
+    print("Counting total directories and files...")
+    total_files, total_directories = count_directories_and_files(directory_to_scan)
+    print(f"Total directories: {total_directories}, Total files: {total_files}")
+
+    # Analyze directories with a progress bar
     directories = []
     with ThreadPoolExecutor() as executor:
-        results = executor.map(analyze_directory, [d.path for d in scandir(directory_to_scan) if d.is_dir()])
-        directories = [result for result in results if result]
+        future_to_directory = {executor.submit(analyze_directory, d.path): d.path for d in scandir(directory_to_scan) if d.is_dir()}
+        for future in tqdm(future_to_directory, total=total_directories, desc="Analyzing directories"):
+            directory_analysis = future.result()
+            if directory_analysis:
+                directories.append(directory_analysis)
 
     if not directories:
         print("No directories matched the criteria.")
@@ -85,7 +114,7 @@ def main():
     # Write directory names with colors
     for directory, color in directories:
         cell = ws.append([directory])[0][0]
-        cell.font = styles.Font(color=color)
+        cell.font = Font(color=color)
 
     # Save the workbook
     wb.save(output_file)
@@ -93,3 +122,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
