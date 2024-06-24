@@ -1,74 +1,95 @@
 """
-Python Script to Filter Files by Creation Date and Output to Excel
+Python Script to Filter Directories by File Modification Dates and Output to Excel
 
 Author: Duane K Robinson
 Date: 2024-06-24
 
 This script performs the following tasks:
-1. Defines the directory path and date range for filtering files.
+1. Prompts for a directory path to parse or uses the current directory if none is provided.
 2. Ensures the specified directory exists.
-3. Retrieves all files in the parent directory and its subdirectories.
-4. Filters the files based on their creation date within the specified range.
-5. Outputs the filtered files along with their directory paths into an Excel spreadsheet, 
-   mimicking the hierarchical structure observed in the provided example spreadsheet.
+3. Retrieves all files in the directory and its subdirectories using efficient directory traversal.
+4. Analyzes the last modified dates of the files to determine the directory color coding based on fiscal year cutoff.
+5. Outputs the directory names into an Excel spreadsheet with color coding.
 """
 
 import os
-import pandas as pd
 from datetime import datetime
-from openpyxl import Workbook
+from openpyxl import Workbook, styles
+from concurrent.futures import ThreadPoolExecutor
+from os import scandir, stat
 
-# Define the directory path
-parent_directory_path = r"Y:\QualityAssurance"
+# Fiscal year cutoff for 2013 starts in July
+fy_cutoff = datetime(2012, 7, 1)
 
-# Define the date range
-start_date = datetime(2013, 1, 1)
-end_date = datetime.now()
+def scan_files(directory):
+    """Scan the directory using scandir for improved performance."""
+    with scandir(directory) as entries:
+        for entry in entries:
+            if entry.is_dir(follow_symlinks=False):
+                yield from scan_files(entry.path)
+            elif entry.is_file(follow_symlinks=False):
+                yield entry
 
-# Ensure the directory exists
-if not os.path.exists(parent_directory_path):
-    print("The specified parent directory does not exist.")
-else:
-    # Get all files in the parent directory and its subdirectories
-    files = []
-    for root, dirs, file_names in os.walk(parent_directory_path):
-        for file_name in file_names:
-            file_path = os.path.join(root, file_name)
-            file_info = os.stat(file_path)
-            files.append({
-                'file_path': file_path,
-                'creation_time': datetime.fromtimestamp(file_info.st_ctime),
-                'last_access_time': datetime.fromtimestamp(file_info.st_atime),
-                'directory_name': root,
-                'file_name': file_name
-            })
+def analyze_directory(directory):
+    """Analyze file modification dates in the directory."""
+    all_before_fy = True
+    any_before_fy = False
+    all_after_fy = True
 
-    # Filter files by creation date range
-    filtered_files = [
-        file for file in files 
-        if start_date <= file['creation_time'] <= end_date
-    ]
+    for entry in scandir(directory):
+        if entry.is_file(follow_symlinks=False):
+            file_mod_time = datetime.fromtimestamp(stat(entry.path).st_mtime)
+            if file_mod_time < fy_cutoff:
+                any_before_fy = True
+                all_after_fy = False
+            else:
+                all_before_fy = False
 
-    # Sort filtered files by directory name
-    filtered_files.sort(key=lambda x: x['directory_name'])
+    if all_before_fy:
+        return (directory, 'red')
+    elif any_before_fy:
+        return (directory, 'purple')
+    elif all_after_fy:
+        return (directory, 'blue')
+    return None
 
-    # Create a DataFrame for the filtered files
-    df_filtered_files = pd.DataFrame(filtered_files)
+def main():
+    # Prompt user for directory path or use the current directory
+    directory_input = input("Enter the directory to parse (press enter to use current directory): ")
+    directory_to_scan = directory_input if directory_input else os.getcwd()
 
-    # Prepare the structure similar to the provided spreadsheet
+    if not os.path.exists(directory_to_scan):
+        print("The specified directory does not exist.")
+        return
+
+    # Prompt for output file location and name
+    output_file = input("Enter the full path and file name for the output Excel file: ")
+
+    directories = []
+    with ThreadPoolExecutor() as executor:
+        results = executor.map(analyze_directory, [d.path for d in scandir(directory_to_scan) if d.is_dir()])
+        directories = [result for result in results if result]
+
+    if not directories:
+        print("No directories matched the criteria.")
+        return
+
+    # Create the workbook and sheet
     wb = Workbook()
     ws = wb.active
-    ws.title = "Filtered Files"
+    ws.title = "Directory Analysis"
 
-    # Add header
-    headers = ['File', 'Directory', 'Created']
-    ws.append(headers)
+    # Write headers
+    ws.append(["Directory Name", "Status"])
 
-    # Add data rows
-    for file in filtered_files:
-        ws.append([file['file_name'], file['directory_name'], file['creation_time']])
+    # Write directory names with colors
+    for directory, color in directories:
+        cell = ws.append([directory])[0][0]
+        cell.font = styles.Font(color=color)
 
     # Save the workbook
-    output_path = '/dev/python/Filtered_Files.xlsx'
-    wb.save(output_path)
-    print(f"Filtered files information has been saved to {output_path}")
+    wb.save(output_file)
+    print(f"Directory analysis has been saved to {output_file}")
+
+if __name__ == "__main__":
+    main()
