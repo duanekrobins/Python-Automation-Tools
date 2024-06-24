@@ -80,6 +80,10 @@ def main():
     # Prompt for output file location and name
     output_file = input("Enter the full path and file name for the output Excel file: ")
 
+    # Validate the output file path
+    if not output_file.endswith('.xlsx'):
+        output_file = os.path.join(output_file, 'DirectoryAnalysis.xlsx')
+
     directories = []
     with ThreadPoolExecutor() as executor:
         results = executor.map(analyze_directory, [d.path for d in scandir(directory_to_scan) if d.is_dir()])
@@ -143,3 +147,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
