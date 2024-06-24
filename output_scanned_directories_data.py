@@ -17,6 +17,7 @@ from datetime import datetime
 from openpyxl import Workbook
 from concurrent.futures import ThreadPoolExecutor
 from os import scandir, stat
+from tqdm import tqdm
 
 # Fiscal year cutoff for 2013 starts in July
 fy_cutoff = datetime(2012, 7, 1)
@@ -29,6 +30,20 @@ def scan_files(directory):
                 yield from scan_files(entry.path)
             elif entry.is_file(follow_symlinks=False):
                 yield entry
+
+def count_directories_and_files(directory):
+    """Count total directories and files."""
+    total_directories = 0
+    total_files = 0
+    for entry in scandir(directory):
+        if entry.is_dir(follow_symlinks=False):
+            total_directories += 1
+            subdir_files, subdir_dirs = count_directories_and_files(entry.path)
+            total_files += subdir_files
+            total_directories += subdir_dirs
+        elif entry.is_file(follow_symlinks=False):
+            total_files += 1
+    return total_files, total_directories
 
 def analyze_directory(directory):
     """Analyze file statistics in the directory."""
@@ -84,10 +99,19 @@ def main():
     if not output_file.endswith('.xlsx'):
         output_file = os.path.join(output_file, 'DirectoryAnalysis.xlsx')
 
+    # Count total directories and files
+    print("Counting total directories and files...")
+    total_files, total_directories = count_directories_and_files(directory_to_scan)
+    print(f"Total directories: {total_directories}, Total files: {total_files}")
+
+    # Analyze directories with a progress bar
     directories = []
     with ThreadPoolExecutor() as executor:
-        results = executor.map(analyze_directory, [d.path for d in scandir(directory_to_scan) if d.is_dir()])
-        directories = list(results)
+        future_to_directory = {executor.submit(analyze_directory, d.path): d.path for d in scandir(directory_to_scan) if d.is_dir()}
+        for future in tqdm(future_to_directory, total=total_directories, desc="Analyzing directories"):
+            directory_analysis = future.result()
+            if directory_analysis:
+                directories.append(directory_analysis)
 
     if not directories:
         print("No directories found.")
