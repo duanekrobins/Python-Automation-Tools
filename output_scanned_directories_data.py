@@ -38,7 +38,7 @@ def count_directories_and_files(directory):
     total_directories = 0
     total_files = 0
     for entry in scandir(directory):
-        if entry.is_dir(follow_symlinks=False):
+        if entry is_dir(follow_symlinks=False):
             total_directories += 1
             # Recursively count files and directories in subdirectories.
             subdir_files, subdir_dirs = count_directories_and_files(entry.path)
@@ -132,7 +132,10 @@ def main():
             for d in dirs:
                 directories.append(os.path.join(root, d))
 
-        with ThreadPoolExecutor() as executor:
+        # Set maximum number of threads to reduce memory usage
+        max_workers = min(32, len(directories))
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_directory = {executor.submit(analyze_directory, d): d for d in directories}
             for future in tqdm(as_completed(future_to_directory), total=len(directories), desc="Analyzing directories"):
                 try:
@@ -184,5 +187,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
