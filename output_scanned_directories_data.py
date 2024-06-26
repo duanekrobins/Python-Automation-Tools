@@ -37,15 +37,16 @@ def count_directories_and_files(directory):
     """Count total directories and files."""
     total_directories = 0
     total_files = 0
-    for entry in scandir(directory):
-        if entry is_dir(follow_symlinks=False):
-            total_directories += 1
-            # Recursively count files and directories in subdirectories.
-            subdir_files, subdir_dirs = count_directories_and_files(entry.path)
-            total_files += subdir_files
-            total_directories += subdir_dirs
-        elif entry.is_file(follow_symlinks=False):
-            total_files += 1
+    with scandir(directory) as entries:
+        for entry in entries:
+            if entry.is_dir(follow_symlinks=False):
+                total_directories += 1
+                # Recursively count files and directories in subdirectories.
+                subdir_files, subdir_dirs = count_directories_and_files(entry.path)
+                total_files += subdir_files
+                total_directories += subdir_dirs
+            elif entry.is_file(follow_symlinks=False):
+                total_files += 1
     return total_files, total_directories
 
 def analyze_directory(directory):
