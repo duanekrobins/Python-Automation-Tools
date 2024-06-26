@@ -2,7 +2,7 @@
 Python Script to Analyze Directories and Output File Statistics to Excel
 
 Author: Duane K Robinson
-Date: 2024-06-24
+Date: 2024-06-25
 
 This script performs the following tasks:
 1. Prompts for a directory path to parse or uses the current directory if none is provided.
@@ -15,7 +15,7 @@ This script performs the following tasks:
 import os
 from datetime import datetime
 from openpyxl import Workbook
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from os import scandir, stat
 from tqdm import tqdm
 
@@ -27,8 +27,10 @@ def scan_files(directory):
     with scandir(directory) as entries:
         for entry in entries:
             if entry.is_dir(follow_symlinks=False):
+                # Recursively scan subdirectories.
                 yield from scan_files(entry.path)
             elif entry.is_file(follow_symlinks=False):
+                # Yield file entries.
                 yield entry
 
 def count_directories_and_files(directory):
@@ -38,6 +40,7 @@ def count_directories_and_files(directory):
     for entry in scandir(directory):
         if entry.is_dir(follow_symlinks=False):
             total_directories += 1
+            # Recursively count files and directories in subdirectories.
             subdir_files, subdir_dirs = count_directories_and_files(entry.path)
             total_files += subdir_files
             total_directories += subdir_dirs
@@ -84,91 +87,102 @@ def format_size(size):
         size /= 1024
 
 def main():
-    # Prompt user for directory path or use the current directory
-    directory_input = input("Enter the directory to parse (press enter to use current directory): ")
-    directory_to_scan = directory_input if directory_input else os.getcwd()
+    try:
+        # Prompt user for directory path or use the current directory
+        directory_input = input("Enter the directory to parse (press enter to use current directory): ")
+        directory_to_scan = directory_input if directory_input else os.getcwd()
 
-    if not os.path.exists(directory_to_scan):
-        print("The specified directory does not exist.")
-        return
+        if not os.path.exists(directory_to_scan):
+            print("The specified directory does not exist.")
+            return
 
-    # Prompt for output file location and name
-    output_file = input("Enter the full path and file name for the output Excel file: ")
+        # Prompt for output file location and name
+        output_file = input("Enter the full path and file name for the output Excel file: ")
 
-    # Validate the output file path
-    if not output_file.endswith('.xlsx'):
-        output_file = os.path.join(output_file, 'DirectoryAnalysis.xlsx')
+        # Validate the output file path
+        if not output_file.endswith('.xlsx'):
+            output_file = os.path.join(output_file, 'DirectoryAnalysis.xlsx')
 
-    # Count total directories and files
-    print("Counting total directories and files...")
-    total_files, total_directories = count_directories_and_files(directory_to_scan)
-    print(f"Total directories: {total_directories}, Total files: {total_files}")
+        # Count total directories and files
+        print("Counting total directories and files...")
+        total_files, total_directories = count_directories_and_files(directory_to_scan)
+        print(f"Total directories: {total_directories}, Total files: {total_files}")
 
-    # Analyze directories with a progress bar
-    directories = []
-    with ThreadPoolExecutor() as executor:
-        future_to_directory = {executor.submit(analyze_directory, d.path): d.path for d in scandir(directory_to_scan) if d.is_dir()}
-        for future in tqdm(future_to_directory, total=total_directories, desc="Analyzing directories"):
-            directory_analysis = future.result()
-            if directory_analysis:
-                directories.append(directory_analysis)
+        # Initialize the workbook and sheet
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Directory Analysis"
 
-    if not directories:
-        print("No directories found.")
-        return
+        # Write headers
+        headers = ["Directory", "Total Files", "Files Before FY 2013", "Files After FY 2013",
+                   "Total Size", "Size Before FY 2013", "Size After FY 2013"]
+        ws.append(headers)
 
-    # Create the workbook and sheet
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Directory Analysis"
+        # Initialize grand totals
+        grand_total_files = 0
+        grand_files_before_fy = 0
+        grand_files_after_fy = 0
+        grand_total_size = 0
+        grand_size_before_fy = 0
+        grand_size_after_fy = 0
 
-    # Write headers
-    headers = ["Directory", "Total Files", "Files Before FY 2013", "Files After FY 2013",
-               "Total Size", "Size Before FY 2013", "Size After FY 2013"]
-    ws.append(headers)
+        # Analyze directories with a progress bar
+        directories = [directory_to_scan]
+        for root, dirs, files in os.walk(directory_to_scan):
+            for d in dirs:
+                directories.append(os.path.join(root, d))
 
-    # Initialize grand totals
-    grand_total_files = 0
-    grand_files_before_fy = 0
-    grand_files_after_fy = 0
-    grand_total_size = 0
-    grand_size_before_fy = 0
-    grand_size_after_fy = 0
+        with ThreadPoolExecutor() as executor:
+            future_to_directory = {executor.submit(analyze_directory, d): d for d in directories}
+            for future in tqdm(as_completed(future_to_directory), total=len(directories), desc="Analyzing directories"):
+                try:
+                    directory_analysis = future.result()
+                    if directory_analysis:
+                        dir_stats = directory_analysis
+                        
+                        # Print the current directory being analyzed
+                        print(f"Currently analyzing: {dir_stats['directory']}")
 
-    # Write directory statistics
-    for dir_stats in directories:
-        grand_total_files += dir_stats['total_files']
-        grand_files_before_fy += dir_stats['files_before_fy']
-        grand_files_after_fy += dir_stats['files_after_fy']
-        grand_total_size += dir_stats['total_size']
-        grand_size_before_fy += dir_stats['size_before_fy']
-        grand_size_after_fy += dir_stats['size_after_fy']
-        
+                        grand_total_files += dir_stats['total_files']
+                        grand_files_before_fy += dir_stats['files_before_fy']
+                        grand_files_after_fy += dir_stats['files_after_fy']
+                        grand_total_size += dir_stats['total_size']
+                        grand_size_before_fy += dir_stats['size_before_fy']
+                        grand_size_after_fy += dir_stats['size_after_fy']
+                        
+                        ws.append([
+                            dir_stats['directory'],
+                            dir_stats['total_files'],
+                            dir_stats['files_before_fy'],
+                            dir_stats['files_after_fy'],
+                            format_size(dir_stats['total_size']),
+                            format_size(dir_stats['size_before_fy']),
+                            format_size(dir_stats['size_after_fy'])
+                        ])
+                except Exception as e:
+                    print(f"Error analyzing directory {future_to_directory[future]}: {e}")
+
+        # Write grand totals
         ws.append([
-            dir_stats['directory'],
-            dir_stats['total_files'],
-            dir_stats['files_before_fy'],
-            dir_stats['files_after_fy'],
-            format_size(dir_stats['total_size']),
-            format_size(dir_stats['size_before_fy']),
-            format_size(dir_stats['size_after_fy'])
+            "Grand Total",
+            grand_total_files,
+            grand_files_before_fy,
+            grand_files_after_fy,
+            format_size(grand_total_size),
+            format_size(grand_size_before_fy),
+            format_size(grand_size_after_fy)
         ])
 
-    # Write grand totals
-    ws.append([
-        "Grand Total",
-        grand_total_files,
-        grand_files_before_fy,
-        grand_files_after_fy,
-        format_size(grand_total_size),
-        format_size(grand_size_before_fy),
-        format_size(grand_size_after_fy)
-    ])
+        # Save the workbook
+        wb.save(output_file)
+        print(f"Directory analysis has been saved to {output_file}")
 
-    # Save the workbook
-    wb.save(output_file)
-    print(f"Directory analysis has been saved to {output_file}")
+    except KeyboardInterrupt:
+        print("Process interrupted by user. Exiting...")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
     main()
+
 
