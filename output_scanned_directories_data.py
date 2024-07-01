@@ -10,69 +10,6 @@ This script performs the following tasks:
 3. Retrieves all files in the directory and its subdirectories using efficient directory traversal.
 4. Calculates file statistics including total number of files, total file size, and splits these by the fiscal year 2013 cutoff.
 5. Outputs the directory statistics into an Excel spreadsheet and provides a grand total at the end.
-"""
-
-import os
-from datetime import datetime
-from openpyxl import Workbook
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from os import scandir, stat
-from tqdm import tqdm
-
-# Fiscal year cutoff for 2013 starts in July
-fy_cutoff = datetime(2012, 7, 1)
-
-def scan_files(directory):
-    """Scan the directory using scandir for improved performance."""
-    with scandir(directory) as entries:
-        for entry in entries:
-            if entry.is_dir(follow_symlinks=False):
-                # Recursively scan subdirectories.
-                yield from scan_files(entry.path)
-            elif entry.is_file(follow_symlinks=False):
-                # Yield file entries.
-                yield entry
-
-def count_directories_and_files(directory):
-    """Count total directories and files."""
-    total_directories = 0
-    total_files = 0
-    with scandir(directory) as entries:
-        for entry in entries:
-            if entry.is_dir(follow_symlinks=False):
-                total_directories += 1
-                # Recursively count files and directories in subdirectories.
-                subdir_files, subdir_dirs = count_directories_and_files(entry.path)
-                total_files += subdir_files
-                total_directories += subdir_dirs
-            elif entry.is_file(follow_symlinks=False):
-                total_files += 1
-    return total_files, total_directories
-
-def analyze_directory(directory):
-    """Analyze file statistics in the directory."""
-    total_files = 0
-    total_size = 0
-    files_before_fy = 0
-    size_before_fy = 0
-    files_after_fy = 0
-    size_after_fy = 0
-
-    for entry in scan_files(directory):
-        total_files += 1
-        file_size = stat(entry.path).st_size
-        total_size += file_size"""
-Python Script to Analyze Directories and Output File Statistics to Excel
-
-Author: Duane K Robinson
-Date: 2024-06-25
-
-This script performs the following tasks:
-1. Prompts for a directory path to parse or uses the current directory if none is provided.
-2. Ensures the specified directory exists.
-3. Retrieves all files in the directory and its subdirectories using efficient directory traversal.
-4. Calculates file statistics including total number of files, total file size, and splits these by the fiscal year 2013 cutoff.
-5. Outputs the directory statistics into an Excel spreadsheet and provides a grand total at the end.
 6. Writes the directory statistics to a MySQL database.
 7. Allows pausing the script using Ctrl+Z.
 8. Clears all records in the database table before writing new data.
@@ -93,8 +30,8 @@ fy_cutoff = datetime(2012, 7, 1)
 
 # Database connection details
 db_config = {
-    'user': 'root',
-    'password': 'j9Rachael2009##',
+    'user': '',
+    'password': '',
     'host': '127.0.0.1',
     'database': 'delete_week'
 }
@@ -321,3 +258,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
