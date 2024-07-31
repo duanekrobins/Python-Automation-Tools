@@ -1,0 +1,228 @@
+"""
+Python Script to Analyze Directories and Output File Statistics
+
+Author: Duane K Robinson
+Date: 2024-07-31
+
+This script performs the following tasks:
+1. Prompts for a directory path to parse or uses the current directory if none is provided.
+2. Ensures the specified directory exists.
+3. Retrieves all files in the directory and its subdirectories using efficient directory traversal.
+4. Calculates file statistics including total number of files and total file size.
+5. Outputs the directory statistics into a text file, an Excel spreadsheet, and optionally a MySQL database.
+6. Allows pausing the script using Ctrl+Z.
+7. Clears all records in the database table before writing new data.
+8. Adds an ID field to the database to track record numbers.
+"""
+
+import os
+import time
+import mysql.connector
+from datetime import datetime
+from openpyxl import Workbook
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from os import scandir, stat
+from tqdm import tqdm
+
+# Database connection details
+db_config = {
+    'user': 'root',
+    'password': 'j9Rachael2009##',
+    'host': '127.0.0.1',
+    'database': 'delete_week'
+}
+
+def scan_files(directory):
+    """Scan the directory using scandir for improved performance."""
+    with scandir(directory) as entries:
+        for entry in entries:
+            if entry.is_dir(follow_symlinks=False):
+                # Recursively scan subdirectories.
+                yield from scan_files(entry.path)
+            elif entry.is_file(follow_symlinks=False):
+                # Yield file entries.
+                yield entry
+
+def analyze_directory(directory):
+    """Analyze file statistics in the directory."""
+    total_files = 0
+    total_size = 0
+    start_time = time.time()
+
+    # Traverse through each file and directory
+    for entry in scan_files(directory):
+        total_files += 1
+        file_size = stat(entry.path).st_size
+        total_size += file_size
+
+    end_time = time.time()
+    total_time = end_time - start_time
+
+    # Return statistics of the analyzed directory
+    return {
+        'directory': directory,
+        'total_files': total_files,
+        'total_size': total_size,
+        'total_time': total_time
+    }
+
+def format_size(size):
+    """Convert size to a readable format (bytes, KB, MB, GB)."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+
+def clear_database():
+    """Clear all records in the database table."""
+    connection = mysql.connector.connect(**db_config)
+    cursor = connection.cursor()
+    cursor.execute("TRUNCATE TABLE output_directory_scan_data")
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+def save_to_database(data, record_id):
+    """Save directory analysis data to the MySQL database."""
+    connection = mysql.connector.connect(**db_config)
+    cursor = connection.cursor()
+
+    insert_query = """
+    INSERT INTO output_directory_scan_data 
+    (ID, Directory, total_files, total_size, total_time) 
+    VALUES (%s, %s, %s, %s, %s)
+    """
+
+    values = (
+        record_id,
+        data['directory'],
+        data['total_files'],
+        str(data['total_size']),
+        str(data['total_time'])
+    )
+
+    try:
+        cursor.execute(insert_query, values)
+        connection.commit()
+        print(f"Record {record_id} successfully written to the database.")
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+    finally:
+        cursor.close()
+        connection.close()
+
+def main():
+    try:
+        # Prompt user for directory path or use the current directory
+        directory_input = input("Enter the directory to parse (press enter to use current directory): ")
+        directory_to_scan = directory_input if directory_input else os.getcwd()
+
+        # Check if the specified directory exists
+        if not os.path.exists(directory_to_scan):
+            print("The specified directory does not exist.")
+            return
+
+        # Prompt for output text file location and name
+        text_output_file = input("Enter the full path and file name for the output text file (must end with .txt): ")
+        if not text_output_file.endswith('.txt'):
+            print("The output file must be a text file with .txt extension.")
+            return
+
+        # Prompt for output Excel file location and name
+        excel_output_file = input("Enter the full path and file name for the output Excel file (must end with .xlsx): ")
+        if not excel_output_file.endswith('.xlsx'):
+            print("The output file must be an Excel file with .xlsx extension.")
+            return
+        
+        # Prompt if user wants to save results to a database
+        save_to_db = input("Do you want to save the results to a MySQL database? (yes/no): ").lower() == 'yes'
+        if save_to_db:
+            # Clear the database table before writing new data
+            clear_database()
+
+        # Initialize lists to store directory analysis results
+        results = []
+
+        # Initialize the workbook and sheets
+        wb = Workbook()
+        ws_parent = wb.active
+        ws_parent.title = "Parent Directory Totals"
+        ws_details = wb.create_sheet(title="Detailed Analysis")
+
+        # Write headers for parent directory totals
+        headers = ["Directory", "Total Files", "Total Size", "Time to Analyze (s)"]
+        ws_parent.append(headers)
+        ws_details.append(headers)
+
+        # Analyze parent directory first
+        parent_totals = analyze_directory(directory_to_scan)
+        results.append(parent_totals)
+
+        # Write parent directory totals to text file and Excel sheet
+        with open(text_output_file, 'w') as text_file:
+            text_file.write("Directory\tTotal Files\tTotal Size\tTime to Analyze (s)\n")
+            text_file.write(f"{parent_totals['directory']}\t{parent_totals['total_files']}\t{format_size(parent_totals['total_size'])}\t{parent_totals['total_time']:.2f}\n")
+        ws_parent.append([
+            parent_totals['directory'],
+            parent_totals['total_files'],
+            format_size(parent_totals['total_size']),
+            f"{parent_totals['total_time']:.2f}"
+        ])
+        
+        # Analyze subdirectories with a progress bar
+        directories = [os.path.join(root, d) for root, dirs, _ in os.walk(directory_to_scan) for d in dirs]
+
+        # Set maximum number of threads to reduce memory usage
+        max_workers = min(32, len(directories))
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_directory = {executor.submit(analyze_directory, d): d for d in directories}
+            record_id = 2  # Start from 2 as parent directory is 1
+            with open(text_output_file, 'a') as text_file:  # Append mode
+                for future in tqdm(as_completed(future_to_directory), total=len(directories), desc="Analyzing directories"):
+                    try:
+                        directory_analysis = future.result()
+                        if directory_analysis:
+                            results.append(directory_analysis)
+                            dir_stats = directory_analysis
+
+                            # Write directory stats to text file
+                            text_file.write(f"{dir_stats['directory']}\t{dir_stats['total_files']}\t{format_size(dir_stats['total_size'])}\t{dir_stats['total_time']:.2f}\n")
+                            
+                            # Write directory stats to the detailed Excel sheet
+                            ws_details.append([
+                                dir_stats['directory'],
+                                dir_stats['total_files'],
+                                format_size(dir_stats['total_size']),
+                                f"{dir_stats['total_time']:.2f}"
+                            ])
+                            
+                            # Save to database if opted
+                            if save_to_db:
+                                save_to_database(dir_stats, record_id)
+                                record_id += 1
+                    except Exception as e:
+                        print(f"Error analyzing directory {future_to_directory[future]}: {e}")
+
+        # Save the workbook
+        wb.save(excel_output_file)
+        print(f"Directory analysis has been saved to {excel_output_file}")
+        print(f"Directory analysis has been saved to {text_output_file}")
+
+        # Calculate grand totals for all analyzed directories
+        grand_total_files = sum(result['total_files'] for result in results)
+        grand_total_size = sum(result['total_size'] for result in results)
+        grand_total_time = sum(result['total_time'] for result in results)
+
+        # Print grand totals
+        print("Grand Total Files:", grand_total_files)
+        print("Grand Total Size:", format_size(grand_total_size))
+        print("Grand Total Time:", f"{grand_total_time:.2f} seconds")
+
+    except KeyboardInterrupt:
+        print("Process interrupted by user. Exiting...")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+if __name__ == "__main__":
+    main()
