@@ -1,0 +1,101 @@
+{
+  "input_directory": "C:/dev/xml_file_mod/anonymized-path",
+  "output_directory": "C:/dev/xml_file_mod/anonymized-path/output",
+  "pretty_print": true,
+  "error_recovery": true,
+  "schema_validation": {
+    "enabled": false
+  },
+  "mappings": [
+    {
+      "xpath": "./AMS_DOCUMENT/@DOC_CAT",
+      "current_value": "ABC",
+      "new_value": "XYZ"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/@DOC_TYP",
+      "current_value": "TYPE_A",
+      "new_value": "TYPE_B"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/@DOC_DEPT_CD",
+      "current_value": "100",
+      "new_value": "200"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/@DOC_UNIT_CD",
+      "current_value": "UNIT_A",
+      "new_value": "UNIT_B"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_CAT",
+      "current_value": "ABC",
+      "new_value": "XYZ"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_TYP",
+      "current_value": "TYPE_A",
+      "new_value": "TYPE_B"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_NM",
+      "current_value": "Sample Document Name",
+      "new_value": "Updated Document Title"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_REC_DT_DC",
+      "current_value": "2024-01-01",
+      "new_value": "2024-12-31"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_BFY",
+      "current_value": "2023",
+      "new_value": "2024"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_FY_DC",
+      "current_value": "2023",
+      "new_value": "2024"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_PER_DC",
+      "current_value": "2",
+      "new_value": "3"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_ID",
+      "current_value": "ID001",
+      "new_value": "ID002"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_VERS_NO",
+      "current_value": "1",
+      "new_value": "2"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_CAT[CDATA]",
+      "current_value": "<![CDATA[ABC]]>",
+      "new_value": "<![CDATA[XYZ]]>"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_TYP[CDATA]",
+      "current_value": "<![CDATA[TYPE_A]]>",
+      "new_value": "<![CDATA[TYPE_B]]>"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_CD[CDATA]",
+      "current_value": "<![CDATA[CODE_A]]>",
+      "new_value": "<![CDATA[CODE_B]]>"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_DEPT_CD[CDATA]",
+      "current_value": "<![CDATA[100]]>",
+      "new_value": "<![CDATA[200]]>"
+    },
+    {
+      "xpath": "./AMS_DOCUMENT/JV_DOC_HDR/DOC_NM[CDATA]",
+      "current_value": "<![CDATA[Sample Document Title]]>",
+      "new_value": "<![CDATA[Updated Document Title]]>"
+    }
+  ]
+}
